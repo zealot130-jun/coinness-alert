@@ -100,6 +100,27 @@ def get_text(url):
         return r.headers.get("Content-Type", ""), r.read().decode("utf-8", "replace")
 
 
+def largest_article_list(obj):
+    """페이지 데이터 안에서 title과 price를 가진 항목이 가장 많은 목록을 찾음."""
+    best = []
+
+    def walk(o, path):
+        nonlocal best
+        if isinstance(o, list):
+            arts = [x for x in o if isinstance(x, dict) and "title" in x and ("price" in x or "href" in x)]
+            if len(arts) > len(best):
+                best = arts
+                if "list_path" not in _logged:
+                    print(f"[진단] 매물 목록 위치: {path} ({len(arts)}건)")
+            for x in o:
+                walk(x, path + "[]")
+        elif isinstance(o, dict):
+            for k, v in o.items():
+                walk(v, f"{path}.{k}")
+    walk(obj, "")
+    return best
+
+
 def articles_from_html(html):
     """검색 페이지 HTML 안에 들어 있는 데이터에서 매물 목록을 찾음."""
     for pat in (r"window\.__remixContext\s*=\s*(\{.*?\});\s*</script>",
@@ -107,11 +128,13 @@ def articles_from_html(html):
         m = re.search(pat, html, re.S)
         if m:
             try:
-                found = find_key(json.loads(m.group(1)), "fleamarketArticles")
-                if found:
-                    return found
+                ctx = json.loads(m.group(1))
             except ValueError:
-                pass
+                print(f"[진단] 페이지 데이터 JSON 해석 실패 (앞부분 {m.group(1)[:120]!r})")
+                continue
+            found = find_key(ctx, "fleamarketArticles") or largest_article_list(ctx)
+            if found:
+                return found
     # 검색엔진용 JSON-LD(상품 목록)에서 최소 정보만이라도 뽑기
     items = []
     for m in re.finditer(r'<script type="application/ld\+json"[^>]*>(.*?)</script>', html, re.S):
