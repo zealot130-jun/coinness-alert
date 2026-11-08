@@ -1,0 +1,40 @@
+name: daangn-alert
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # 10분마다 (GitHub 사정에 따라 몇 분 늦어질 수 있음)
+  workflow_dispatch:
+
+concurrency:
+  group: daangn-alert
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 이미 본 매물 목록 불러오기
+        uses: actions/cache/restore@v4
+        with:
+          path: daangn_seen.json
+          key: daangn-seen-${{ github.run_id }}
+          restore-keys: daangn-seen-
+
+      - name: 매물 확인 및 알림
+        env:
+          DAANGN_REGIONS: ${{ vars.DAANGN_REGIONS }}
+          DAANGN_MAX_PRICE: ${{ vars.DAANGN_MAX_PRICE }}
+          DAANGN_ONLY_DIRECT: ${{ vars.DAANGN_ONLY_DIRECT }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python3 daangn_alert.py --once
+
+      - name: 이미 본 매물 목록 저장
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: daangn_seen.json
+          key: daangn-seen-${{ github.run_id }}
