@@ -224,12 +224,12 @@ def is_match(a):
     return all(p.search(text) for p in MUST)
 
 
-def notify(a):
+def notify(a, prefix=""):
     price = price_of(a)
     region = a.get("region")
     region = region.get("name") if isinstance(region, dict) else (region or "")
     tag = "바로구매 " if direct_purchase(a) else ""
-    title = f"[당근 {tag}{price:,}원] {a.get('title') or ''}".strip()
+    title = f"{prefix}[당근 {tag}{price:,}원] {a.get('title') or ''}".strip()
     body = (a.get("content") or "").strip()
     if len(body) > 300:
         body = body[:300] + "…"
@@ -263,9 +263,29 @@ def save_seen(seen):
         json.dump(sorted(seen)[-2000:], f, ensure_ascii=False)
 
 
+def ping():
+    """테스트 알림: 지금 검색되는 바로구매 매물 하나를 실제 알림 모양으로 보냄 (조건 무시)."""
+    region = (os.environ.get("DAANGN_REGIONS") or DEFAULT_REGIONS).split(",")[0].strip()
+    sample = None
+    try:
+        arts = search(resolve_region(region), SEARCH_WORDS[0])
+        sample = next((a for a in arts if direct_purchase(a)), arts[0] if arts else None)
+    except Exception as e:
+        print(f"검색 실패: {e}", file=sys.stderr)
+    if sample:
+        print(f"테스트 알림: {sample.get('title')}  {article_url(sample)}")
+        notify(sample, prefix="[테스트] ")
+    else:
+        notify({"id": "", "title": "당근 알림 연결 완료", "price": 0,
+                "content": "검색 결과가 없어 예시 매물 없이 보냅니다."}, prefix="[테스트] ")
+
+
 def main():
     args = set(sys.argv[1:])
     dry_run = "--test" in args
+    if "--ping" in args:
+        ping()
+        return
     regions = [r for r in (os.environ.get("DAANGN_REGIONS") or DEFAULT_REGIONS).split(",") if r.strip()]
 
     seen = load_seen()

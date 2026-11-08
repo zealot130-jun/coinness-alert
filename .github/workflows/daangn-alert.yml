@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "*/10 * * * *"   # 10분마다 (GitHub 사정에 따라 몇 분 늦어질 수 있음)
   workflow_dispatch:
+    inputs:
+      ping:
+        description: "테스트 알림만 보내기 (지금 검색되는 바로구매 매물 하나)"
+        type: boolean
+        default: false
 
 concurrency:
   group: daangn-alert
@@ -30,7 +35,7 @@ jobs:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python3 daangn_alert.py --once
+        run: python3 daangn_alert.py ${{ inputs.ping && '--ping' || '--once' }}
 
       - name: 이미 본 매물 목록 저장
         if: always()

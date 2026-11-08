@@ -58,4 +58,6 @@ Actions 탭 → coinness-alert → Run workflow 에서 **테스트 알림만 보
 - `DAANGN_MAX_PRICE`: 최대 가격, 기본 `100000`
 - `DAANGN_ONLY_DIRECT`: `0`이면 바로구매가 아닌 매물도 알림
 
+Actions → daangn-alert → Run workflow 에서 **테스트 알림만 보내기**를 체크하면 지금 검색되는 바로구매 매물 하나가 `[테스트]` 알림으로 옵니다(조건 무시).
+
 조건을 바꾸려면 `daangn_alert.py`의 `SEARCH_WORDS`, `MUST`, `EXCLUDE_TITLE`을 고치면 됩니다.
