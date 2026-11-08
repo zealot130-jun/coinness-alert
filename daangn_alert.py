@@ -110,8 +110,6 @@ def largest_article_list(obj):
             arts = [x for x in o if isinstance(x, dict) and "title" in x and ("price" in x or "href" in x)]
             if len(arts) > len(best):
                 best = arts
-                if "list_path" not in _logged:
-                    print(f"[진단] 매물 목록 위치: {path} ({len(arts)}건)")
             for x in o:
                 walk(x, path + "[]")
         elif isinstance(o, dict):
@@ -152,32 +150,12 @@ def articles_from_html(html):
     return items
 
 
-_logged = set()
-
-
 def search(region, word):
-    q = urllib.parse.urlencode({
-        "in": region, "search": word, "only_on_sale": "true",
-        "_data": "routes/kr.buy-sell._index",
-    })
-    ctype, body = get_text(f"{BASE}/kr/buy-sell/?{q}")
-    try:
-        found = find_key(json.loads(body), "fleamarketArticles")
-        if found:
-            return found
-    except ValueError:
-        pass
-    # _data 방식이 안 되면 일반 검색 페이지 HTML에서 찾기
+    # 당근 웹 검색 페이지 HTML 안의 데이터(buySellArticles)를 읽음.
+    # 예전 _data=... JSON 방식은 2026-11부터 빈 응답이 와서 쓰지 않음.
     q = urllib.parse.urlencode({"in": region, "search": word, "only_on_sale": "true"})
-    ctype2, html = get_text(f"{BASE}/kr/buy-sell/?{q}")
-    found = articles_from_html(html)
-    if "diag" not in _logged:  # 응답 형식 확인용 로그 (한 번만)
-        _logged.add("diag")
-        print(f"[진단] _data 응답: {ctype} {len(body)}자, 앞부분 {body[:200]!r}")
-        print(f"[진단] HTML 응답: {ctype2} {len(html)}자, 찾은 매물 {len(found)}건, "
-              f"remix={'__remixContext' in html} next={'__NEXT_DATA__' in html} "
-              f"ldjson={html.count('application/ld+json')} fleamarket={'fleamarketArticles' in html}")
-    return found
+    _, html = get_text(f"{BASE}/kr/buy-sell/?{q}")
+    return articles_from_html(html)
 
 
 def price_of(article):
@@ -213,6 +191,8 @@ def direct_purchase(a):
     당근 웹 응답에서 바로구매 표시 필드 이름이 공개돼 있지 않아서,
     이름에 direct/purchase/parcel/delivery 등이 들어간 필드를 넓게 봅니다.
     """
+    if "isInstantBuyAvailable" in a:  # 당근 웹 검색 페이지의 바로구매 표시 (2026-11 확인)
+        return bool(a["isInstantBuyAvailable"])
     seen_flag = False
     for k, v in a.items():
         if DIRECT_KEY.search(k):
@@ -236,6 +216,8 @@ def is_match(a):
     if price is None or price > MAX_PRICE:
         return False
     if EXCLUDE_TITLE.search(title):
+        return False
+    if a.get("status") not in (None, "Ongoing"):  # 예약중/판매완료 제외
         return False
     if ONLY_DIRECT and direct_purchase(a) is False:
         return False
