@@ -92,13 +92,69 @@ def resolve_region(value):
     return f"{pick['name']}-{pick['id']}"
 
 
+def get_text(url):
+    req = urllib.request.Request(url, headers={
+        "User-Agent": UA, "Accept": "text/html,application/json", "Accept-Language": "ko-KR,ko;q=0.9",
+    })
+    with urllib.request.urlopen(req, timeout=20) as r:
+        return r.headers.get("Content-Type", ""), r.read().decode("utf-8", "replace")
+
+
+def articles_from_html(html):
+    """검색 페이지 HTML 안에 들어 있는 데이터에서 매물 목록을 찾음."""
+    for pat in (r"window\.__remixContext\s*=\s*(\{.*?\});\s*</script>",
+                r'<script id="__NEXT_DATA__"[^>]*>(\{.*?\})</script>'):
+        m = re.search(pat, html, re.S)
+        if m:
+            try:
+                found = find_key(json.loads(m.group(1)), "fleamarketArticles")
+                if found:
+                    return found
+            except ValueError:
+                pass
+    # 검색엔진용 JSON-LD(상품 목록)에서 최소 정보만이라도 뽑기
+    items = []
+    for m in re.finditer(r'<script type="application/ld\+json"[^>]*>(.*?)</script>', html, re.S):
+        try:
+            data = json.loads(m.group(1))
+        except ValueError:
+            continue
+        for el in (data.get("itemListElement") or []) if isinstance(data, dict) else []:
+            it = el.get("item", el) if isinstance(el, dict) else {}
+            offers = it.get("offers") or {}
+            url = it.get("url") or ""
+            aid = re.search(r"/buy-sell/([^/?]+)", url)
+            items.append({"id": aid.group(1) if aid else url, "href": url, "title": it.get("name") or "",
+                          "content": it.get("description") or "", "price": offers.get("price"), "ld_json": True})
+    return items
+
+
+_logged = set()
+
+
 def search(region, word):
     q = urllib.parse.urlencode({
         "in": region, "search": word, "only_on_sale": "true",
         "_data": "routes/kr.buy-sell._index",
     })
-    data = get_json(f"{BASE}/kr/buy-sell/?{q}")
-    return find_key(data, "fleamarketArticles") or []
+    ctype, body = get_text(f"{BASE}/kr/buy-sell/?{q}")
+    try:
+        found = find_key(json.loads(body), "fleamarketArticles")
+        if found:
+            return found
+    except ValueError:
+        pass
+    # _data 방식이 안 되면 일반 검색 페이지 HTML에서 찾기
+    q = urllib.parse.urlencode({"in": region, "search": word, "only_on_sale": "true"})
+    ctype2, html = get_text(f"{BASE}/kr/buy-sell/?{q}")
+    found = articles_from_html(html)
+    if "diag" not in _logged:  # 응답 형식 확인용 로그 (한 번만)
+        _logged.add("diag")
+        print(f"[진단] _data 응답: {ctype} {len(body)}자, 앞부분 {body[:200]!r}")
+        print(f"[진단] HTML 응답: {ctype2} {len(html)}자, 찾은 매물 {len(found)}건, "
+              f"remix={'__remixContext' in html} next={'__NEXT_DATA__' in html} "
+              f"ldjson={html.count('application/ld+json')} fleamarket={'fleamarketArticles' in html}")
+    return found
 
 
 def price_of(article):
